@@ -1,0 +1,418 @@
+openapi: 3.1.0
+
+info:
+  title: Password Wallet API
+  version: 0.0.1
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Check server health
+      description: Returns the current health status and server version.
+      tags:
+        - Health
+      responses:
+        "200":
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ready:
+    get:
+      operationId: getReady
+      summary: Check server readiness
+      description: Checks whether the server is ready to handle requests.
+      tags:
+        - Health
+      responses:
+        "200":
+          description: Server is ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+        "503":
+          description: Server is not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+
+  /register:
+    post:
+      operationId: register
+      summary: Register user
+      description: Creates a new user account and stores the client-encrypted vault key.
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: User successfully registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegisterResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: User with this email already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /login:
+    post:
+      operationId: login
+      summary: Authenticate user
+      description: Authenticates a user using their credentials.
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvalidCredentialResponse"
+
+  /logout:
+    post:
+      operationId: logout
+      summary: Logout user
+      description: Invalidates the current authenticated session or token.
+      tags:
+        - Authentication
+      security:
+        - BearerAuth: []
+      responses:
+        "204":
+          description: Logout successful
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvalidCredentialResponse"
+
+  /vault/entries:
+    get:
+      operationId: getVaultEntries
+      summary: Get vault entries
+      description: Returns encrypted vault entries for the authenticated user.
+      tags:
+        - Vault
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Vault entries successfully returned
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/VaultEntry"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    post:
+      operationId: createVaultEntry
+      summary: Create vault entry
+      description: Creates a new encrypted vault entry for the authenticated user.
+      tags:
+        - Vault
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVaultEntryRequest"
+      responses:
+        "201":
+          description: Vault entry successfully created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VaultEntry"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /vault/entries/{id}:
+    delete:
+      operationId: deleteVaultEntry
+      summary: Delete vault entry
+      description: Deletes a vault entry owned by the authenticated user.
+      tags:
+        - Vault
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Vault entry identifier
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Vault entry successfully deleted
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Vault entry not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - version
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+        version:
+          type: string
+          examples:
+            - "0.0.1"
+
+    ReadyResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - ready
+
+
+    RegisterRequest:
+      type: object
+      required:
+        - email
+        - auth_password
+        - kdf
+        - encrypted_vault_key
+        - vault_key_nonce
+      properties:
+        email:
+          type: string
+          format: email
+          examples:
+            - user@example.com
+        auth_password:
+          type: string
+          format: password
+          minLength: 8
+        kdf:
+          $ref: "#/components/schemas/KdfParameters"
+        encrypted_vault_key:
+          type: string
+          description: Base64-encoded vault key encrypted on the client with the key derived from the master password.
+        vault_key_nonce:
+          type: string
+          description: Base64-encoded nonce used to encrypt the vault key.
+
+    RegisterResponse:
+      type: object
+      required:
+        - id
+        - email
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+
+    KdfParameters:
+      type: object
+      required:
+        - algorithm
+        - salt
+        - memory
+        - iterations
+        - parallelism
+      properties:
+        algorithm:
+          type: string
+          enum:
+            - argon2id
+        salt:
+          type: string
+          description: Base64-encoded random salt used by the client for key derivation.
+        memory:
+          type: integer
+          minimum: 1
+          description: Argon2 memory cost in KiB.
+        iterations:
+          type: integer
+          minimum: 1
+          description: Argon2 time cost.
+        parallelism:
+          type: integer
+          minimum: 1
+          description: Argon2 parallelism degree.
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          examples:
+            - user@example.com
+        password:
+          type: string
+          format: password
+          minLength: 8
+          examples:
+            - MySecretPassword
+
+    LoginResponse:
+      type: object
+      required:
+        - access_token
+        - token_type
+      properties:
+        access_token:
+          type: string
+          examples:
+            - eyJhbGciOi...
+        token_type:
+          type: string
+          enum:
+            - Bearer
+
+    InvalidCredentialResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          enum:
+            - invalid_credentials
+
+    CreateVaultEntryRequest:
+      type: object
+      required:
+        - encrypted_data
+        - nonce
+      properties:
+        encrypted_data:
+          type: string
+          description: Client-side encrypted vault data.
+        nonce:
+          type: string
+          description: Nonce used for authenticated encryption.
+
+    VaultEntry:
+      type: object
+      required:
+        - id
+        - encrypted_data
+        - nonce
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        encrypted_data:
+          type: string
+        nonce:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          examples:
+            - internal_error
