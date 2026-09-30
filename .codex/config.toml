@@ -1,0 +1,21 @@
+# Codex configuration for efficient token consumption
+
+model_reasoning_effort = "low"            # Saves reasoning tokens (options: low, medium, high)
+model_verbosity = "minimal"                # Force concise replies, no boilerplate or code duplication
+
+[tools]
+web_search = false                         # Disable background web searches to avoid context bloat
+max_command_output_chars = 2000            # Truncate long terminal logs/tests to ~500 tokens max
+
+[sandbox_workspace_write]
+disable_response_storage = true            # Do not cache redundant response histories locally
+
+[features]
+prompt_cache = true                        # Enable aggressive Prompt Caching to lower input costs
+
+[project]
+# Prevent Codex from indexing heavy directories and token-blackholes
+exclude_patterns = [
+    "build/**", 
+    ".git/**", 
+]
