@@ -1,0 +1,4 @@
+[settings]
+build_type=Release
+arch=x86_64
+compiler.cppstd=23

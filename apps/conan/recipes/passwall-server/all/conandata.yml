@@ -1,0 +1,4 @@
+sources:
+  "develop":
+  url: "https://github.com/GuitarSlapper/passwall"
+  branch: "develop"
