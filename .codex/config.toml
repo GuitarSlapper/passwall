@@ -1,7 +1,7 @@
 # Codex configuration for efficient token consumption
 
 model_reasoning_effort = "low"            # Saves reasoning tokens (options: low, medium, high)
-model_verbosity = "minimal"                # Force concise replies, no boilerplate or code duplication
+model_verbosity = "low"                # Force concise replies, no boilerplate or code duplication
 
 [tools]
 web_search = false                         # Disable background web searches to avoid context bloat
