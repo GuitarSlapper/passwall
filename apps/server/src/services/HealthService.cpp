@@ -4,20 +4,23 @@
 
 #include <stdexcept>
 
-namespace passwall
+namespace passwall::server
 {
 HealthService::HealthService(std::shared_ptr<PasswordWalletRepository> repository,
                              std::shared_ptr<AsyncExecutor> executor)
     : repository_(std::move(repository)), executor_(std::move(executor))
 {
-    if (!repository_ || !executor_) throw std::invalid_argument("Health dependencies are required");
+    if (!repository_ || !executor_)
+        throw std::invalid_argument("Health dependencies are required");
 }
 
 void HealthService::checkReady(Completion<Empty> done) const
 {
-    executor_->submit<Empty>(std::move(done), [repository = repository_] {
-        repository->checkReady();
-        return Result<Empty>::success();
-    });
+    executor_->submit<Empty>(std::move(done),
+                             [repository = repository_]
+                             {
+                                 repository->checkReady();
+                                 return Result<Empty>::success();
+                             });
 }
-}  // namespace passwall
+} // namespace passwall::server

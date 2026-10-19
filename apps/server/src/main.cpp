@@ -1,9 +1,9 @@
-#include "controllers/HealthController.h"
 #include "controllers/AuthenticationController.h"
+#include "controllers/HealthController.h"
 #include "controllers/VaultController.h"
 #include "services/AsyncExecutor.h"
-#include "services/security/SessionAuthenticator.h"
 #include "services/repositories/PostgresPasswordWalletRepository.h"
+#include "services/security/SessionAuthenticator.h"
 
 #include <drogon/drogon.h>
 
@@ -13,42 +13,49 @@
 
 namespace
 {
-std::string requiredEnv(const char *name)
+std::string requiredEnv(const char* name)
 {
     const auto value = std::getenv(name);
-    if (!value || !*value) throw std::runtime_error(std::string("Set ") + name);
+    if (!value || !*value)
+        throw std::runtime_error(std::string("Set ") + name);
     return value;
 }
-}
+} // namespace
 
 int main()
 {
     try
     {
         auto db = drogon::orm::DbClient::newPgClient(requiredEnv("PASSWALL_DATABASE_URL"), 4);
-        passwall::AuthConfig auth;
+        passwall::server::AuthConfig auth;
         auth.jwtSecret = requiredEnv("PASSWALL_JWT_SECRET");
         // Composition root: only startup knows the concrete persistence adapter.
-        auto repository = std::make_shared<passwall::PostgresPasswordWalletRepository>(db);
-        auto security = std::make_shared<passwall::SecurityService>(std::move(auth));
-        auto authenticator = std::make_shared<passwall::SessionAuthenticator>(repository, security);
-        auto executor = std::make_shared<passwall::AsyncExecutor>();
-        auto health = std::make_shared<passwall::HealthService>(repository, executor);
-        auto authentication = std::make_shared<passwall::AuthenticationService>(
+        auto repository = std::make_shared<passwall::server::PostgresPasswordWalletRepository>(db);
+        auto security = std::make_shared<passwall::server::SecurityService>(std::move(auth));
+        auto authenticator =
+            std::make_shared<passwall::server::SessionAuthenticator>(repository, security);
+        auto executor = std::make_shared<passwall::server::AsyncExecutor>();
+        auto health = std::make_shared<passwall::server::HealthService>(repository, executor);
+        auto authentication = std::make_shared<passwall::server::AuthenticationService>(
             repository, executor, security, authenticator);
-        auto vault = std::make_shared<passwall::VaultService>(repository, executor, authenticator);
-        drogon::app().registerController(std::make_shared<passwall::HealthController>(health));
-        drogon::app().registerController(std::make_shared<passwall::AuthenticationController>(authentication));
-        drogon::app().registerController(std::make_shared<passwall::VaultController>(vault));
+        auto vault =
+            std::make_shared<passwall::server::VaultService>(repository, executor, authenticator);
+        drogon::app().registerController(
+            std::make_shared<passwall::server::HealthController>(health));
+        drogon::app().registerController(
+            std::make_shared<passwall::server::AuthenticationController>(authentication));
+        drogon::app().registerController(
+            std::make_shared<passwall::server::VaultController>(vault));
         // Local default; terminate TLS at a reverse proxy for remote clients.
-        drogon::app().addListener("127.0.0.1", 8080)
+        drogon::app()
+            .addListener("127.0.0.1", 8080)
             .setThreadNum(2)
             .setClientMaxBodySize(1024 * 1024)
             .setLogLevel(trantor::Logger::kWarn)
             .run();
         executor->shutdown();
     }
-    catch (const std::exception &)
+    catch (const std::exception&)
     {
         // Backend exceptions may include connection strings; do not print them.
         std::cerr << "Server startup failed. Check dependencies, PASSWALL_DATABASE_URL "

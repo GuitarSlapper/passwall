@@ -1,128 +1,101 @@
-# Password Wallet server
+# Passwall Server
 
-Implements the eight operations in `api/openapi.yaml` with Drogon, PostgreSQL,
-libsodium (Argon2id) and jwt-cpp (HS256). Requires C++17 or newer.
+## Overview
 
-## Three-layer architecture
+Drogon HTTP server implementing the eight operations in the
+[OpenAPI contract](../../api/openapi.yaml). PostgreSQL stores users, sessions and
+client-encrypted vault data. See [Architecture](ARCHITECTURE.md) for layer boundaries.
 
-```text
-apps/server/src/
-  main.cpp                          # dependency wiring and HTTP server startup
-  CMakeLists.txt                    # build targets for all three layers
-  README.md
-  controllers/                      # HTTP layer, grouped by OpenAPI tags
-    HealthController.{h,cpp}
-    AuthenticationController.{h,cpp}
-    VaultController.{h,cpp}
-    HttpSupport.{h,cpp}              # JSON validation, Bearer parsing, responses
-  services/                         # application/business layer
-    HealthService.{h,cpp}
-    AuthenticationService.{h,cpp}
-    VaultService.{h,cpp}
-    ServiceTypes.h                  # shared request, result and entity types
-    AsyncExecutor.{h,cpp}            # bounded background task execution
-    security/
-      SecurityService.{h,cpp}        # Argon2id, UUIDs and JWT cryptography
-      SessionAuthenticator.{h,cpp}   # JWT validation plus session checks
-    repositories/                   # data access layer, under services as requested
-      PasswordWalletRepository.h    # abstract persistence contract and records
-      PostgresPasswordWalletRepository.{h,cpp}
-      schema.sql
-  tests/
-    integration.py
-```
+## Requirements
 
-The request flow is **controller → service → repository**. Controllers own HTTP
-routing, input validation and response serialization. Services implement use
-cases, authorization and error outcomes; they use the repository interface and
-contain no SQL or Drogon HTTP/ORM code. The PostgreSQL adapter owns SQL and row
-mapping, and receives password hashes rather than plaintext passwords.
+- CMake 3.20+ and a C++23 compiler.
+- Drogon built with PostgreSQL support, jwt-cpp, JsonCpp, OpenSSL and libsodium.
+- PostgreSQL and `psql` for initial schema setup.
+- Python 3 for integration tests.
 
-`main.cpp` constructs the repository, shared security components, executor and
-three services, then registers three controllers before starting Drogon on
-`127.0.0.1:8080`. Dependencies are injected through constructors. Background tasks
-retain their dependencies until completion; shutdown drains the shared executor.
+## Build
 
-The CMake targets are `passwall_contracts`, `passwall_repositories`,
-`passwall_services`, `passwall_controllers` and the `passwall_server` executable.
-The service target does not link the concrete PostgreSQL adapter. The executable
-selects that adapter, so another repository implementation can be substituted.
-
-| OpenAPI tag | Controller | Service | Routes |
-| --- | --- | --- | --- |
-| Health | HealthController | HealthService | `GET /health`, `GET /ready` |
-| Authentication | AuthenticationController | AuthenticationService | `POST /register`, `POST /login`, `POST /logout` |
-| Vault | VaultController | VaultService | `GET /vault/entries`, `POST /vault/entries`, `DELETE /vault/entries/{id}` |
-
-## Build and run
-
-Install Drogon **with PostgreSQL support**, jwt-cpp, OpenSSL, JsonCpp and libsodium.
-Make their CMake packages available using your package manager/toolchain or
-`CMAKE_PREFIX_PATH`. This directory is a standalone CMake project:
+Run commands from the repository root. Make dependencies available through your
+package-manager toolchain or `CMAKE_PREFIX_PATH`.
 
 ```powershell
-cmake -S apps/server/src -B build/server-layered
-cmake --build build/server-layered --config Release
+cmake -S apps/server -B build/server -DCMAKE_BUILD_TYPE=Release
+cmake --build build/server --config Release
+```
+
+The executable is `passwall_server` (`.exe` on Windows). Multi-configuration
+generators place it under `build/server/Release`. Add dependency DLL directories
+to `PATH` or deploy the required DLLs beside the executable.
+
+Use a fresh build directory if an old cache points to `apps/server/src` or
+`apps/server/src/controllers`. The project CMake entry point is `apps/server`.
+
+## Configuration
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PASSWALL_DATABASE_URL` | Required | PostgreSQL connection string understood by libpq. |
+| `PASSWALL_JWT_SECRET` | Required | HS256 signing secret containing at least 32 random bytes. |
+| `PASSWALL_TEST_URL` | `http://127.0.0.1:8080` | Server address used by integration tests. |
+
+The listener is `127.0.0.1:8080`. JWT issuer, audience and lifetime default to
+`passwall`, `passwall-client` and 900 seconds in `AuthConfig`. These are C++
+configuration values, not environment variables.
+
+## Run
+
+Apply the initial schema once to a new database:
+
+```powershell
 psql -v ON_ERROR_STOP=1 -d passwall -f apps/server/src/services/repositories/schema.sql
 $env:PASSWALL_DATABASE_URL = "host=127.0.0.1 port=5432 dbname=passwall user=passwall connect_timeout=5"
-# Supply PASSWALL_JWT_SECRET from a secret store: at least 32 random bytes.
-./build/server-layered/Release/passwall_server.exe
+# Supply PASSWALL_JWT_SECRET through your deployment secret configuration.
+./build/server/passwall_server.exe
 ```
 
-For single-configuration generators, the executable is directly in `build/server-layered`.
-Use a fresh build directory: an existing cache configured from `src/controllers`
-still points to the previous source directory. The refactor does not change the
-database schema; do not reapply the initial SQL to an already initialized database.
-Use PostgreSQL's password file or deployment secrets for database credentials.
-The schema is deliberately not applied automatically at startup.
+The database must already exist. Use PostgreSQL's password file or deployment
+secrets for credentials. Schema creation is not automatic; do not reapply the
+initial SQL to an initialized database. Terminate HTTPS at a reverse proxy and
+configure authentication rate limits there for remote deployments.
 
-For an existing application, link `passwall_controllers` and your repository
-implementation, then register each controller with
-`drogon::app().registerController(...)` before `run()`, as shown in `main.cpp`.
-Do not also include this `main.cpp` in an existing executable.
+## Test
 
-## Behavior and boundaries
-
-- Passwords use Argon2id, three passes and 64 MiB, with a random salt. Unknown
-  users still perform password verification against a dummy hash.
-- JWTs expire after 15 minutes and require HS256, issuer, audience, subject,
-  issue time, expiration and session ID. Sessions persist in PostgreSQL;
-  logout deletes the current session. Subsequent requests using it return 401.
-  Requests already authorized before concurrent logout may finish.
-- Vault queries always use the authenticated user's ID. Foreign/missing entry
-  IDs and malformed UUIDs return 404 after authentication.
-- Database calls and password hashing run on two workers with a queue limited
-  to 128 jobs. Database operations have a five-second timeout.
-- `/health` checks process liveness; `/ready` checks connectivity and the schema.
-- Backend faults return sanitized JSON 500 responses. These fallback responses
-  are necessary but are not listed on every operation in the current OpenAPI.
-- The HTTP body limit is 1 MiB. Apply HTTPS and login rate limits at your reverse
-  proxy before exposing the server remotely. Email uniqueness is case-sensitive.
-- `encrypted_data` and `nonce` are opaque strings. The client chooses encryption.
-  Client KDF parameters are stored, never used for server password hashing.
-- Expired sessions are rejected immediately. Periodically clean them with:
-  `DELETE FROM auth_sessions WHERE expires_at <= CURRENT_TIMESTAMP;`.
-
-`doc/api.md` also describes `/vault/key-info`, but `api/openapi.yaml` does not.
-This server follows OpenAPI and does not add that route. A client on a new device
-will need that contract extended to retrieve the encrypted vault key.
-
-## Integration tests
-
-Use a disposable database with `services/repositories/schema.sql` applied and start this server:
+Start the server against a disposable database with the schema applied:
 
 ```powershell
-python apps/server/src/tests/integration.py
+python apps/server/tests/test_integration.py
 ```
 
-Tests create uniquely named accounts and exercise all routes, invalid requests,
-JWT tampering, owner isolation, logout and concurrent duplicate registration.
-If the test process has the same `PASSWALL_JWT_SECRET` as the server, it also
-checks correctly signed tokens with missing/invalid claims and disallowed
-algorithms. Otherwise that test is skipped.
-They leave test users in the database; do not run against production.
+Alternatively, enable the opt-in CTest target:
 
-Implementation references: [Drogon controllers](https://github.com/drogonframework/drogon/wiki/ENG-04-2-Controller-HttpController),
-[Drogon database client](https://github.com/drogonframework/drogon/wiki/ENG-08-1-Database-DbClient),
-[libsodium password hashing](https://doc.libsodium.org/password_hashing/default_phf),
-[jwt-cpp](https://github.com/Thalhammer/jwt-cpp).
+```powershell
+cmake -S apps/server -B build/server -DPASSWALL_ENABLE_INTEGRATION_TESTS=ON
+ctest --test-dir build/server -C Release --output-on-failure
+```
+
+The `passwall_server_integration` test checks routes, validation, duplicate
+registration, JWT tampering, owner isolation and logout. Signed invalid-claim
+checks run only when the test process has the same `PASSWALL_JWT_SECRET` as the
+server. Tests create accounts and leave data behind; use a disposable database.
+CTest does not start PostgreSQL or the server.
+
+## Limitations
+
+- `GET /vault/key-info` is not part of OpenAPI and is not implemented. The desktop
+  currently keeps encrypted key metadata locally and supports backup/import.
+- The request-body limit is 1 MiB. Backend failures return sanitized JSON 500
+  responses, including on routes where OpenAPI does not enumerate that fallback.
+- Email uniqueness is case-sensitive. Requests authorized before concurrent logout
+  may finish after the session is deleted.
+- Expired sessions are rejected immediately, but database cleanup is manual:
+
+```sql
+DELETE FROM auth_sessions WHERE expires_at <= CURRENT_TIMESTAMP;
+```
+
+## Related documentation
+
+- [Server architecture](ARCHITECTURE.md)
+- [Desktop setup](../desktop/README.md)
+- [Desktop architecture](../desktop/ARCHITECTURE.md)
+- [OpenAPI contract](../../api/openapi.yaml)

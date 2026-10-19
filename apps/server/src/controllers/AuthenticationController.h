@@ -5,11 +5,12 @@
 #include <drogon/HttpController.h>
 #include <memory>
 
-namespace passwall
+namespace passwall::server
 {
-class AuthenticationController final : public drogon::HttpController<AuthenticationController, false>
+class AuthenticationController final
+    : public drogon::HttpController<AuthenticationController, false>
 {
-  public:
+public:
     using Callback = http::Callback;
     explicit AuthenticationController(std::shared_ptr<AuthenticationService> service);
 
@@ -19,11 +20,11 @@ class AuthenticationController final : public drogon::HttpController<Authenticat
     ADD_METHOD_TO(AuthenticationController::logout, "/logout", drogon::Post);
     METHOD_LIST_END
 
-    void registerUser(const drogon::HttpRequestPtr &, Callback &&) const;
-    void login(const drogon::HttpRequestPtr &, Callback &&) const;
-    void logout(const drogon::HttpRequestPtr &, Callback &&) const;
+    void registerUser(const drogon::HttpRequestPtr&, Callback&&) const;
+    void login(const drogon::HttpRequestPtr&, Callback&&) const;
+    void logout(const drogon::HttpRequestPtr&, Callback&&) const;
 
-  private:
+private:
     std::shared_ptr<AuthenticationService> service_;
 };
-}  // namespace passwall
+} // namespace passwall::server

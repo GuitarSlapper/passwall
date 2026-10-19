@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-namespace passwall
+namespace passwall::server
 {
 struct RegisterRequest
 {
@@ -20,17 +20,17 @@ struct RegisterRequest
 
 struct RegisteredUser
 {
-    std::string id;  // UUID
+    std::string id; // UUID
     std::string email;
 };
 
 struct VaultEntry
 {
-    std::string id;  // UUID
+    std::string id; // UUID
     std::string encryptedData;
     std::string nonce;
-    std::string createdAt;  // RFC 3339, UTC
-    std::string updatedAt;  // RFC 3339, UTC
+    std::string createdAt; // RFC 3339, UTC
+    std::string updatedAt; // RFC 3339, UTC
 };
 
 enum class ServiceError
@@ -43,8 +43,7 @@ enum class ServiceError
     internalError
 };
 
-template <typename T>
-struct Result
+template <typename T> struct Result
 {
     T value{};
     ServiceError error{ServiceError::none};
@@ -64,7 +63,6 @@ struct Empty
 {
 };
 
-template <typename T>
-using Completion = std::function<void(Result<T>)>;
+template <typename T> using Completion = std::function<void(Result<T>)>;
 
-}  // namespace passwall
+} // namespace passwall::server

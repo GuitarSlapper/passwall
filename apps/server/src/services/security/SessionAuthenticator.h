@@ -3,7 +3,7 @@
 #include "SecurityService.h"
 #include <memory>
 
-namespace passwall
+namespace passwall::server
 {
 class PasswordWalletRepository;
 
@@ -11,13 +11,13 @@ class PasswordWalletRepository;
 // Call on a worker thread: repository operations are synchronous.
 class SessionAuthenticator final
 {
-  public:
+public:
     SessionAuthenticator(std::shared_ptr<PasswordWalletRepository> repository,
                          std::shared_ptr<SecurityService> security);
-    Identity authenticate(const std::string &token) const;
+    Identity authenticate(const std::string& token) const;
 
-  private:
+private:
     std::shared_ptr<PasswordWalletRepository> repository_;
     std::shared_ptr<SecurityService> security_;
 };
-}  // namespace passwall
+} // namespace passwall::server

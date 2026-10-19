@@ -5,11 +5,11 @@
 #include <drogon/HttpController.h>
 #include <memory>
 
-namespace passwall
+namespace passwall::server
 {
 class VaultController final : public drogon::HttpController<VaultController, false>
 {
-  public:
+public:
     using Callback = http::Callback;
     explicit VaultController(std::shared_ptr<VaultService> service);
 
@@ -19,11 +19,11 @@ class VaultController final : public drogon::HttpController<VaultController, fal
     ADD_METHOD_TO(VaultController::deleteVaultEntry, "/vault/entries/{1}", drogon::Delete);
     METHOD_LIST_END
 
-    void getVaultEntries(const drogon::HttpRequestPtr &, Callback &&) const;
-    void createVaultEntry(const drogon::HttpRequestPtr &, Callback &&) const;
-    void deleteVaultEntry(const drogon::HttpRequestPtr &, Callback &&, std::string id) const;
+    void getVaultEntries(const drogon::HttpRequestPtr&, Callback&&) const;
+    void createVaultEntry(const drogon::HttpRequestPtr&, Callback&&) const;
+    void deleteVaultEntry(const drogon::HttpRequestPtr&, Callback&&, std::string id) const;
 
-  private:
+private:
     std::shared_ptr<VaultService> service_;
 };
-}  // namespace passwall
+} // namespace passwall::server
